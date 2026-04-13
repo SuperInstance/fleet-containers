@@ -1,0 +1,62 @@
+# ============================================================
+# FLUX Fleet — Docker Network Configuration
+# Defines inter-agent communication network
+# ============================================================
+networks:
+  fleet-internal:
+    name: fleet-network
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: br-fleet
+      com.docker.network.bridge.enable_icc: "true"
+      com.docker.network.bridge.enable_ip_masquerade: "true"
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.28.0.0/16
+          gateway: 172.28.0.1
+          aux_addresses:
+            oracle: 172.28.0.10
+            runtime: 172.28.0.20
+            vessel-1: 172.28.0.31
+            vessel-2: 172.28.0.32
+            greenhorn-1: 172.28.0.41
+            greenhorn-2: 172.28.0.42
+    labels:
+      fleet.network.type: "internal"
+      fleet.network.agent: "true"
+      fleet.org: "SuperInstance"
+
+  fleet-monitor:
+    name: fleet-monitor
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.enable_icc: "true"
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.29.0.0/16
+          gateway: 172.29.0.1
+    labels:
+      fleet.network.type: "monitoring"
+      fleet.org: "SuperInstance"
+
+# Volume definitions shared across the fleet
+volumes:
+  fleet-data:
+    name: fleet-shared-data
+    driver: local
+    labels:
+      fleet.volume.type: "shared-data"
+
+  fleet-logs:
+    name: fleet-shared-logs
+    driver: local
+    labels:
+      fleet.volume.type: "shared-logs"
+
+  fleet-secrets:
+    name: fleet-secrets
+    driver: local
+    labels:
+      fleet.volume.type: "secrets"

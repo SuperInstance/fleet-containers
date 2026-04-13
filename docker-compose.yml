@@ -1,0 +1,229 @@
+version: "3.9"
+
+# ============================================================
+# FLUX Fleet — Multi-Agent Orchestration
+# Compose file for running Oracle1, Vessels, and Greenhorns
+# ============================================================
+
+x-common-env: &common-env
+  FLEET_ORG: SuperInstance
+  LOG_LEVEL: info
+  GIT_USER_NAME: "Super Z"
+  GIT_USER_EMAIL: superz@flux.fleet
+
+services:
+  # --- Oracle: Fleet coordinator ---
+  oracle:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    container_name: fleet-oracle
+    hostname: oracle
+    environment:
+      <<: *common-env
+      AGENT_NAME: oracle-1
+      AGENT_ROLE: oracle
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      AGENT_REPOS: fleet-containers,fleet-orchestrator
+    networks:
+      - fleet-internal
+    volumes:
+      - fleet-data:/fleet/data
+      - fleet-logs:/fleet/logs
+    healthcheck:
+      test: ["CMD", "python3", "/usr/local/bin/healthcheck.py", "--agent"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+
+  # --- Vessel 1: Specialized agent ---
+  vessel-1:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    container_name: fleet-vessel-1
+    hostname: vessel-1
+    depends_on:
+      oracle:
+        condition: service_healthy
+    environment:
+      <<: *common-env
+      AGENT_NAME: vessel-1
+      AGENT_ROLE: vessel
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      AGENT_REPOS: fleet-containers
+    networks:
+      - fleet-internal
+    volumes:
+      - fleet-data:/fleet/data
+      - fleet-logs:/fleet/logs
+    healthcheck:
+      test: ["CMD", "python3", "/usr/local/bin/healthcheck.py", "--agent"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 1G
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+
+  # --- Vessel 2: Specialized agent ---
+  vessel-2:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    container_name: fleet-vessel-2
+    hostname: vessel-2
+    depends_on:
+      oracle:
+        condition: service_healthy
+    environment:
+      <<: *common-env
+      AGENT_NAME: vessel-2
+      AGENT_ROLE: vessel
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      AGENT_REPOS: fleet-containers
+    networks:
+      - fleet-internal
+    volumes:
+      - fleet-data:/fleet/data
+      - fleet-logs:/fleet/logs
+    healthcheck:
+      test: ["CMD", "python3", "/usr/local/bin/healthcheck.py", "--agent"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 1G
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+
+  # --- Greenhorn 1: Learning agent ---
+  greenhorn-1:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    container_name: fleet-greenhorn-1
+    hostname: greenhorn-1
+    depends_on:
+      oracle:
+        condition: service_healthy
+    environment:
+      <<: *common-env
+      AGENT_NAME: greenhorn-1
+      AGENT_ROLE: greenhorn
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      AGENT_REPOS: fleet-containers
+    networks:
+      - fleet-internal
+    volumes:
+      - fleet-data:/fleet/data
+      - fleet-logs:/fleet/logs
+    healthcheck:
+      test: ["CMD", "python3", "/usr/local/bin/healthcheck.py", "--agent"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+
+  # --- Greenhorn 2: Learning agent ---
+  greenhorn-2:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    container_name: fleet-greenhorn-2
+    hostname: greenhorn-2
+    depends_on:
+      oracle:
+        condition: service_healthy
+    environment:
+      <<: *common-env
+      AGENT_NAME: greenhorn-2
+      AGENT_ROLE: greenhorn
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      AGENT_REPOS: fleet-containers
+    networks:
+      - fleet-internal
+    volumes:
+      - fleet-data:/fleet/data
+      - fleet-logs:/fleet/logs
+    healthcheck:
+      test: ["CMD", "python3", "/usr/local/bin/healthcheck.py", "--agent"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+
+  # --- FLUX Runtime ---
+  flux-runtime:
+    build:
+      context: .
+      dockerfile: Dockerfile.flux-runtime
+    container_name: fleet-runtime
+    hostname: runtime
+    environment:
+      <<: *common-env
+      FLUX_RUNTIME_PORT: 8080
+      FLUX_LOG_LEVEL: info
+    networks:
+      - fleet-internal
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "python3", "/usr/local/bin/healthcheck.py", "--runtime"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+volumes:
+  fleet-data:
+    driver: local
+  fleet-logs:
+    driver: local
+
+networks:
+  fleet-internal:
+    name: fleet-network
+    driver: bridge

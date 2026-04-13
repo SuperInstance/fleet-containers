@@ -1,0 +1,86 @@
+# ============================================================
+# FLUX Fleet — Base Image
+# Multi-language runtime: Python 3.11, Go 1.21, Node 20, Rust
+# ============================================================
+FROM ubuntu:22.04 AS base
+
+LABEL maintainer="SuperInstance <superz@flux.fleet>"
+LABEL org.opencontainers.image.title="FLUX Fleet Base"
+LABEL org.opencontainers.image.description="Multi-language base image for FLUX Fleet agents"
+LABEL org.opencontainers.image.source="https://github.com/SuperInstance/fleet-containers"
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+ENV PYTHONUNBUFFERED=1
+ENV PATH="/usr/local/go/bin:${HOME}/.cargo/bin:/usr/local/bin:${PATH}"
+
+# --- System dependencies ---
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    wget \
+    ca-certificates \
+    gnupg \
+    lsb-release \
+    software-properties-common \
+    build-essential \
+    pkg-config \
+    libssl-dev \
+    libffi-dev \
+    git \
+    jq \
+    yq \
+    unzip \
+    locales \
+    procps \
+    && locale-gen en_US.UTF-8 \
+    && rm -rf /var/lib/apt/lists/*
+
+# --- Python 3.11 ---
+RUN add-apt-repository ppa:deadsnakes/ppa && apt-get update && \
+    apt-get install -y --no-install-recommends \
+    python3.11 \
+    python3.11-venv \
+    python3.11-dev \
+    python3-pip \
+    && ln -sf /usr/bin/python3.11 /usr/bin/python3 \
+    && ln -sf /usr/bin/python3.11 /usr/bin/python \
+    && python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel \
+    && rm -rf /var/lib/apt/lists/*
+
+# --- Go 1.21 ---
+ARG GO_VERSION=1.21.13
+RUN wget -qO /tmp/go.tar.gz "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" && \
+    tar -C /usr/local -xzf /tmp/go.tar.gz && \
+    rm /tmp/go.tar.gz && \
+    go version
+
+# --- Node.js 20 ---
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
+    npm install -g npm@latest && \
+    rm -rf /var/lib/apt/lists/* && \
+    node --version && npm --version
+
+# --- Rust (latest stable) ---
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable && \
+    . "${HOME}/.cargo/env" && \
+    rustc --version && cargo --version
+
+# --- Common Python packages ---
+RUN python3 -m pip install --no-cache-dir \
+    requests \
+    pyyaml \
+    pytest \
+    docker-compose
+
+# --- Working directory ---
+WORKDIR /fleet
+
+# --- Health check ---
+COPY healthcheck.py /usr/local/bin/healthcheck.py
+RUN chmod +x /usr/local/bin/healthcheck.py
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD ["python3", "/usr/local/bin/healthcheck.py"]
+
+CMD ["/bin/bash"]

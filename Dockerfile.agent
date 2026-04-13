@@ -1,0 +1,70 @@
+# ============================================================
+# FLUX Fleet — Generic Agent Container
+# Agent runtime with git, GitHub CLI, and Python tooling
+# ============================================================
+FROM python:3.11-slim AS agent
+
+LABEL maintainer="SuperInstance <superz@flux.fleet>"
+LABEL org.opencontainers.image.title="FLUX Agent"
+LABEL org.opencontainers.image.description="Generic FLUX Fleet agent container with git, gh CLI, Python"
+LABEL org.opencontainers.image.source="https://github.com/SuperInstance/fleet-containers"
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV AGENT_HOME=/home/agent
+ENV AGENT_WORKSPACE=${AGENT_HOME}/workspace
+ENV AGENT_CONFIG=${AGENT_HOME}/.config/flux
+
+# --- System deps ---
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    wget \
+    git \
+    ca-certificates \
+    gnupg \
+    lsb-release \
+    software-properties-common \
+    jq \
+    procps \
+    && rm -rf /var/lib/apt/lists/*
+
+# --- GitHub CLI ---
+RUN (curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | \
+     dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg 2>/dev/null && \
+     chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg && \
+     echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | \
+     tee /etc/apt/sources.list.d/github-cli.list > /dev/null && \
+     apt-get update && apt-get install -y gh && \
+     rm -rf /var/lib/apt/lists/*)
+
+# --- Python packages ---
+RUN python3 -m pip install --no-cache-dir --upgrade pip && \
+    python3 -m pip install --no-cache-dir \
+    requests \
+    pyyaml \
+    pytest \
+    docker \
+    gitpython \
+    rich \
+    click \
+    pydantic
+
+# --- Agent user ---
+RUN groupadd -r agent && useradd -r -g agent -d ${AGENT_HOME} -s /bin/bash agent \
+    && mkdir -p ${AGENT_WORKSPACE} ${AGENT_CONFIG} \
+    && chown -R agent:agent ${AGENT_HOME}
+
+# --- Copy entrypoint and healthcheck ---
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY healthcheck.py /usr/local/bin/healthcheck.py
+RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/healthcheck.py
+
+# --- Health check ---
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD ["python3", "/usr/local/bin/healthcheck.py", "--agent"]
+
+USER agent
+WORKDIR ${AGENT_WORKSPACE}
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["idle"]

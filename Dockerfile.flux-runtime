@@ -1,0 +1,59 @@
+# ============================================================
+# FLUX Fleet — VM Runtime Container
+# Lightweight runtime for FLUX VM agent execution
+# ============================================================
+FROM python:3.11-slim AS flux-runtime
+
+LABEL maintainer="SuperInstance <superz@flux.fleet>"
+LABEL org.opencontainers.image.title="FLUX Runtime"
+LABEL org.opencontainers.image.description="FLUX VM runtime container for agent execution"
+LABEL org.opencontainers.image.source="https://github.com/SuperInstance/fleet-containers"
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV FLUX_VM_HOME=/opt/flux-vm
+ENV FLUX_RUNTIME_PORT=8080
+ENV FLUX_LOG_LEVEL=info
+
+# --- System deps ---
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    git \
+    ca-certificates \
+    procps \
+    && rm -rf /var/lib/apt/lists/*
+
+# --- Runtime dependencies ---
+RUN python3 -m pip install --no-cache-dir --upgrade pip && \
+    python3 -m pip install --no-cache-dir \
+    fastapi \
+    uvicorn[standard] \
+    pyyaml \
+    requests \
+    aiohttp \
+    redis \
+    cryptography
+
+# --- FLUX VM directory structure ---
+RUN mkdir -p ${FLUX_VM_HOME}/{bin,lib,agents,scripts,logs,data} \
+    && groupadd -r flux && useradd -r -g flux -d ${FLUX_VM_HOME} -s /bin/bash flux \
+    && chown -R flux:flux ${FLUX_VM_HOME}
+
+# --- Copy runtime scripts ---
+COPY scripts/vm-bootstrap.sh ${FLUX_VM_HOME}/bin/
+COPY scripts/vm-shutdown.sh ${FLUX_VM_HOME}/bin/
+RUN chmod +x ${FLUX_VM_HOME}/bin/*.sh
+
+# --- Health check ---
+COPY healthcheck.py /usr/local/bin/healthcheck.py
+RUN chmod +x /usr/local/bin/healthcheck.py
+HEALTHCHECK --interval=15s --timeout=5s --start-period=5s --retries=3 \
+    CMD ["python3", "/usr/local/bin/healthcheck.py", "--runtime"]
+
+# --- Runtime user ---
+USER flux
+WORKDIR ${FLUX_VM_HOME}
+
+EXPOSE ${FLUX_RUNTIME_PORT}
+
+ENTRYPOINT ["python3", "-m", "uvicorn", "fleet.runtime:app", "--host", "0.0.0.0", "--port", "8080"]
